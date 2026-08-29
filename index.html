@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>憲法急診室 — 已受理／公開書狀案件等待看板</title>
+<meta name="description" content="以急診分流板的視覺語言，呈現司法院憲法法庭「已受理／公開書狀案件」自受理日起算的等待天數。資料展示用途，不代表案件結果。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<a class="skip-link" href="#main">跳至主要內容</a>
+
+<header class="masthead">
+  <div class="masthead__bar">
+    <div class="masthead__mark">
+      <span class="masthead__cross" aria-hidden="true"></span>
+      <div>
+        <h1 class="masthead__title">憲法急診室</h1>
+        <p class="masthead__sub">CONSTITUTIONAL EMERGENCY ROOM ／ 等待中的權利分流看板</p>
+      </div>
+    </div>
+    <p class="masthead__stamp" id="today-stamp">看板日期 —</p>
+  </div>
+
+  <p class="disclaimer" role="note">
+    <strong>資料性質：已受理／公開書狀案件。</strong>
+    本看板僅呈現司法院憲法法庭公開書狀清單所列之<em>受理日期</em>與程序位置，
+    據以計算自受理日起算的等待天數。<b>不代表</b>案件已有實體判斷、勝敗結果或違憲認定，亦不構成法律意見。
+  </p>
+</header>
+
+<main id="main">
+
+  <!-- 唯一的搜尋／篩選 bar：搜尋欄常駐，其餘條件收在預設關閉的抽屜內 -->
+  <div class="filterbar">
+    <div class="filterbar__row">
+      <div class="filterbar__search" role="search">
+        <label class="visually-hidden" for="q">搜尋案件名稱、案號、權益或身份</label>
+        <span class="filterbar__glass" aria-hidden="true"></span>
+        <input type="search" id="q" class="filterbar__input" autocomplete="off"
+               placeholder="搜尋案件名稱、案號、權益或身份（例如：工作權、刑事被告、憲民）">
+      </div>
+
+      <button type="button" class="filterbar__toggle" id="filter-toggle"
+              aria-expanded="false" aria-controls="filter-drawer">
+        <svg class="filterbar__funnel" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M1.2 2h13.6L9.5 8.3v5.1L6.5 15V8.3z"></path>
+        </svg>
+        <span>篩選條件</span>
+        <span class="filterbar__badge" id="filter-badge" hidden></span>
+      </button>
+
+      <p class="filterbar__count" id="list-count" role="status">—</p>
+    </div>
+
+    <div class="drawer" id="filter-drawer" hidden>
+      <div class="drawer__grid">
+        <div class="drawer__group">
+          <label class="drawer__title" for="right-select">權益分類</label>
+          <select id="right-select" class="select"></select>
+        </div>
+
+        <div class="drawer__group">
+          <label class="drawer__title" for="review-select">程序類別</label>
+          <select id="review-select" class="select"></select>
+        </div>
+
+        <div class="drawer__group">
+          <label class="drawer__title" for="status-select">受理狀態</label>
+          <select id="status-select" class="select"></select>
+        </div>
+
+        <div class="drawer__group drawer__group--wide">
+          <h2 class="drawer__title" id="identity-title">受影響身份（可複選）</h2>
+          <p class="drawer__hint">選擇一個或多個與你相關的身份；數字為該身份的案件數。條件在按下「套用篩選」後才生效。</p>
+          <div class="chips" id="identity-chips" role="group" aria-labelledby="identity-title"></div>
+        </div>
+      </div>
+
+      <div class="drawer__actions">
+        <button type="button" class="btn btn--ghost" id="filter-clear">清除所有篩選</button>
+        <button type="button" class="btn btn--solid" id="filter-apply">套用篩選</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="vitals" aria-label="看板總覽數據">
+    <div class="vital">
+      <span class="vital__label">列入看板案件</span>
+      <span class="vital__value" id="vital-total">—</span>
+      <span class="vital__unit">件</span>
+    </div>
+    <div class="vital">
+      <span class="vital__label">目前篩選結果</span>
+      <span class="vital__value vital__value--accent" id="vital-shown">—</span>
+      <span class="vital__unit">件</span>
+    </div>
+    <div class="vital">
+      <span class="vital__label">平均等待</span>
+      <span class="vital__value" id="vital-avg">—</span>
+      <span class="vital__unit">天</span>
+    </div>
+    <div class="vital">
+      <span class="vital__label">最久等待</span>
+      <span class="vital__value" id="vital-max">—</span>
+      <span class="vital__unit">天</span>
+    </div>
+    <div class="vital vital--critical">
+      <span class="vital__label">等待逾 1,000 天</span>
+      <span class="vital__value" id="vital-critical">—</span>
+      <span class="vital__unit">件</span>
+    </div>
+  </section>
+
+  <!-- 三欄閱讀面板：左清單／中星圖／右詳細卡；900px 以下依序堆疊 -->
+  <div class="board">
+
+    <section class="col col--list" aria-labelledby="list-title">
+      <div class="colhead">
+        <h2 class="colhead__title" id="list-title">案件清單</h2>
+        <p class="colhead__hint">依等待天數由長至短排列</p>
+      </div>
+      <div class="cards" id="case-list"></div>
+    </section>
+
+    <section class="col col--sky" aria-labelledby="sky-title">
+      <div class="colhead">
+        <h2 class="colhead__title" id="sky-title">權利星圖</h2>
+        <p class="colhead__hint" id="sky-caption">
+          每個星群是一個主要權益分類，群內每一點是一件已受理案件；點越大代表自受理日起算等得越久。
+        </p>
+      </div>
+
+      <div class="sky" id="sky" role="group" aria-labelledby="sky-title" aria-describedby="sky-caption"></div>
+      <p class="empty" id="sky-empty" hidden>目前篩選條件下沒有案件。請放寬條件或清除篩選。</p>
+
+      <ul class="legend" aria-label="星圖圖例">
+        <li class="legend__item"><span class="legend__dot legend__dot--sm" aria-hidden="true"></span>紅點：等待未逾 1,000 天</li>
+        <li class="legend__item"><span class="legend__dot legend__dot--lg" aria-hidden="true"></span>點越大＝等待越久</li>
+        <li class="legend__item"><span class="legend__dot legend__dot--critical" aria-hidden="true"></span>黑點：等待已逾 1,000 天</li>
+      </ul>
+    </section>
+
+    <section class="col col--detail" aria-labelledby="detail-title">
+      <div class="colhead">
+        <h2 class="colhead__title" id="detail-title">選取案件</h2>
+        <p class="colhead__hint">點選或以鍵盤聚焦清單項目、星點皆可</p>
+      </div>
+      <article class="detail" id="case-detail" aria-labelledby="detail-title"></article>
+    </section>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <p>資料來源：司法院憲法法庭「公開書狀之案件（已受理）」公開頁面。本頁為靜態資料展示 POC，無後端、無追蹤碼、不蒐集個資。</p>
+  <p class="footer__mono">SEED 16 RECORDS ／ LOCAL DATA ONLY ／ NO NETWORK FETCH</p>
+</footer>
+
+<script src="data/cases.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>
