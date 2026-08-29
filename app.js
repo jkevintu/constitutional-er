@@ -596,6 +596,16 @@
       setDrawer(!isDrawerOpen());
     });
 
+    // 星點以外的星圖底色是明確的取消選取 affordance。
+    dom.sky.addEventListener('click', function (event) {
+      if (event.target && event.target.closest && event.target.closest('.dot')) return;
+      if (!ui.selectedId) return;
+      ui.selectedId = null;
+      ui.hoverId = null;
+      applyEmphasis();
+      renderDetail();
+    });
+
     dom.rightSelect.addEventListener('change', function () {
       staged.right = dom.rightSelect.value;
     });
