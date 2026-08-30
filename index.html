@@ -23,7 +23,10 @@
         <p class="masthead__sub">CONSTITUTIONAL EMERGENCY ROOM ／ 等待中的權利分流看板</p>
       </div>
     </div>
-    <p class="masthead__stamp" id="today-stamp">看板日期 —</p>
+    <div class="masthead__stamps">
+      <p class="masthead__stamp" id="today-stamp">看板日期 —</p>
+      <p class="masthead__stamp" id="source-stamp">資料最後查核：—</p>
+    </div>
   </div>
 
   <p class="disclaimer" role="note">
@@ -158,7 +161,7 @@
 
 <footer class="footer">
   <p>資料來源：司法院憲法法庭「公開書狀之案件（已受理）」公開頁面。本頁為靜態資料展示 POC，無後端、無追蹤碼、不蒐集個資。</p>
-  <p class="footer__mono">SEED 16 RECORDS ／ LOCAL DATA ONLY ／ NO NETWORK FETCH</p>
+  <p class="footer__mono" id="footer-mono">STATIC SNAPSHOT ／ LOCAL DATA ONLY ／ NO NETWORK FETCH</p>
 </footer>
 
 <script src="data/cases.js"></script>

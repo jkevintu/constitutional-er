@@ -10,13 +10,47 @@
 
 前端只讀取 `data/cases.js` 的靜態 snapshot，因此不在使用者瀏覽器呼叫外部資料 API。
 
-資料維護者可執行：
+資料流是單向的，每一段都由操作者明示觸發：
 
-```bash
-node scripts/refresh-cases.mjs
+```
+官方公開頁面 →（唯讀抓取）→ 待審閱 JSON →（人工複核後貼上）→ Google Sheet
+             →（唯讀 Apps Script）→ data/cases.js →（手動部署）→ 線上網站
 ```
 
-此腳本從已設定的唯讀 Google Apps Script 端點取得資料，驗證後更新 snapshot；若取得或驗證失敗，不會覆寫既有資料。完成後重新部署靜態站即可發佈新 snapshot。
+### 更新目前的資料
+
+```bash
+# 1. 從官方公開列表抓取，輸出待審閱 JSON（只寫 stdout）
+node scripts/fetch-official-accepted-cases.mjs \
+  --checked-at 2026-08-30T09:00:00Z \
+  > /tmp/constitutional-er-accepted.json
+
+# 2. 檢查筆數，並與上一次的審閱檔比對差異
+node -e "const p=require('/tmp/constitutional-er-accepted.json');console.log(p.counts)"
+diff <(jq -S '.rows' /tmp/constitutional-er-accepted.prev.json) \
+     <(jq -S '.rows' /tmp/constitutional-er-accepted.json)
+
+# 3. 人工複核後，經授權才把 rows 寫入 Google Sheet（本 repo 無任何腳本會做這件事）
+
+# 4. 從唯讀 Apps Script 端點重建靜態快照
+node scripts/refresh-cases.mjs
+
+# 5. 確認 diff 後提交
+git add data/cases.js && git commit -m "chore: refresh case snapshot"
+
+# 6. 由操作者手動部署
+npx --yes vercel --yes --force --scope kevin-tus-projects
+```
+
+> `scripts/fetch-official-accepted-cases.mjs` **只讀取公開網頁**：它不寫 Google Sheet、
+> 不寫入本 repo 任何檔案、也不部署。寫入 Sheet 與部署一律是獨立、需授權的人工步驟。
+
+`scripts/refresh-cases.mjs` 從唯讀 Apps Script 端點取得 v2 封包，驗證每一列的
+`lastUpdatedAt`（RFC3339 UTC）與 `sourceUpdatedAt`（須等於各列時間戳最大值）後，
+才原子性覆寫 snapshot；任何驗證失敗都不會覆蓋既有資料。
+
+完整的欄位契約、驗證規則與停止條件見
+[`skills/refreshing-taiwan-constitutional-court-cases/SKILL.md`](skills/refreshing-taiwan-constitutional-court-cases/SKILL.md)。
 
 ## 資料聲明
 

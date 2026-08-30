@@ -146,6 +146,13 @@ body {
   text-transform: uppercase;
 }
 
+/* 看板日期與資料查核時間並排，窄螢幕時自動換行堆疊。 */
+.masthead__stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .masthead__stamp {
   margin: 0;
   padding: 5px 12px;

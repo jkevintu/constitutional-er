@@ -2,8 +2,8 @@
 /**
  * 憲法急診室 — 手動快照更新腳本
  *
- * 用途：向 Apps Script 端點取得 {updatedAt, cases}，驗證與正規化後，
- *       產生確定性（deterministic）的 data/cases.js 快照。
+ * 用途：向 Apps Script 端點取得 v2 封包 {schemaVersion, sourceUpdatedAt, updatedAt, cases}，
+ *       驗證與正規化後，產生確定性（deterministic）的 data/cases.js 快照。
  *
  * 設計原則：
  * - 瀏覽器端維持零網路請求；此腳本是唯一的資料取得點，由操作者手動執行。
@@ -23,8 +23,14 @@ const ENDPOINT =
 
 const TIMEOUT_MS = 15000;
 
+/** 只接受的端點封包版本；v2 起每一列都必須帶 lastUpdatedAt。 */
+const REQUIRED_SCHEMA_VERSION = 2;
+
 /** 官方案件狀態以中文全形分號分隔「受理狀態」與「程序類別」。 */
 const STATUS_SEPARATOR = '；';
+
+/** 標準 RFC3339 UTC：YYYY-MM-DDTHH:MM:SSZ（不接受毫秒或位移時區）。 */
+const RFC3339_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/;
 
 /** 產出的欄位順序固定，確保輸出具確定性。 */
 const FIELD_ORDER = [
@@ -38,7 +44,8 @@ const FIELD_ORDER = [
   'court',
   'summary',
   'sourceLabel',
-  'sourceUrl'
+  'sourceUrl',
+  'lastUpdatedAt'
 ];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -159,6 +166,44 @@ function requireHttpsUrl(record, field, errors, index) {
 }
 
 /**
+ * 解析標準 RFC3339 UTC 時間戳，回傳毫秒 epoch；格式錯誤或日期不存在時回傳 null。
+ * 不接受毫秒、位移時區或小寫 z，確保跨列比較與輸出都在同一種正規形式上。
+ */
+function parseRfc3339Utc(value) {
+  if (typeof value !== 'string') return null;
+  const match = RFC3339_UTC.exec(value);
+  if (!match) return null;
+  const [, y, mo, d, h, mi, s] = match.map(Number);
+  const stamp = Date.UTC(y, mo - 1, d, h, mi, s);
+  const date = new Date(stamp);
+  // Date.UTC 會把 2026-02-30 之類的日期靜默進位，這裡以回寫比對攔下。
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== mo - 1 ||
+    date.getUTCDate() !== d ||
+    date.getUTCHours() !== h ||
+    date.getUTCMinutes() !== mi ||
+    date.getUTCSeconds() !== s
+  ) {
+    return null;
+  }
+  return stamp;
+}
+
+/** 每一列的 lastUpdatedAt 都必須是標準 RFC3339 UTC，否則整份拒收。 */
+function requireRowTimestamp(record, field, errors, index) {
+  const value = requireText(record, field, errors, index);
+  if (!value) return { value, stamp: null };
+  const stamp = parseRfc3339Utc(value);
+  if (stamp === null) {
+    errors.push(
+      `第 ${index + 1} 筆：${field} 必須為 RFC3339 UTC（YYYY-MM-DDTHH:MM:SSZ），實得 ${JSON.stringify(value)}`
+    );
+  }
+  return { value, stamp };
+}
+
+/**
  * 以第一個全形分號切開 API 的狀態文字：
  * 分號前為 status（受理狀態），分號後為 review（程序類別，無分號時為空字串）。
  */
@@ -176,7 +221,13 @@ function splitStatus(rawStatus) {
 /** 驗證整份 payload，回傳正規化後的紀錄陣列；任何錯誤都會拋出。 */
 function normalize(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new Error('端點回應不是物件，預期 {updatedAt, cases}');
+    throw new Error('端點回應不是物件，預期 {schemaVersion, sourceUpdatedAt, updatedAt, cases}');
+  }
+  if (payload.schemaVersion !== REQUIRED_SCHEMA_VERSION) {
+    throw new Error(
+      `端點 schemaVersion 必須為 ${REQUIRED_SCHEMA_VERSION}，實得 ${JSON.stringify(payload.schemaVersion)}。` +
+        '請先部署 apps-script/Code.gs 的 v2 版本。'
+    );
   }
   if (!Array.isArray(payload.cases)) {
     throw new Error('端點回應的 cases 不是陣列');
@@ -184,12 +235,29 @@ function normalize(payload) {
   if (payload.cases.length === 0) {
     throw new Error('端點回應的 cases 為空陣列，拒絕以空資料覆蓋既有快照');
   }
-  if (typeof payload.updatedAt !== 'string' || !clean(payload.updatedAt)) {
-    throw new Error('端點回應缺少有效的 updatedAt');
+
+  const sourceUpdatedAt = typeof payload.sourceUpdatedAt === 'string'
+    ? clean(payload.sourceUpdatedAt)
+    : '';
+  const sourceStamp = parseRfc3339Utc(sourceUpdatedAt);
+  if (sourceStamp === null) {
+    throw new Error(
+      `端點的 sourceUpdatedAt 必須為 RFC3339 UTC（YYYY-MM-DDTHH:MM:SSZ），實得 ${JSON.stringify(payload.sourceUpdatedAt)}`
+    );
+  }
+  // updatedAt 是 v1 的相容別名，若存在就必須與 sourceUpdatedAt 完全一致。
+  if (payload.updatedAt !== undefined) {
+    const alias = typeof payload.updatedAt === 'string' ? clean(payload.updatedAt) : '';
+    if (alias !== sourceUpdatedAt) {
+      throw new Error(
+        `端點的 updatedAt 別名與 sourceUpdatedAt 不一致：${JSON.stringify(payload.updatedAt)} ≠ ${JSON.stringify(sourceUpdatedAt)}`
+      );
+    }
   }
 
   const errors = [];
   const seenIds = new Set();
+  let maxRowStamp = null;
   const records = payload.cases.map((raw, index) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       errors.push(`第 ${index + 1} 筆：不是物件`);
@@ -208,6 +276,11 @@ function normalize(payload) {
       errors.push(`第 ${index + 1} 筆：status 於分號前為空`);
     }
 
+    const lastUpdated = requireRowTimestamp(raw, 'lastUpdatedAt', errors, index);
+    if (lastUpdated.stamp !== null && (maxRowStamp === null || lastUpdated.stamp > maxRowStamp)) {
+      maxRowStamp = lastUpdated.stamp;
+    }
+
     return {
       id,
       title: requireText(raw, 'title', errors, index),
@@ -219,7 +292,8 @@ function normalize(payload) {
       court: requireText(raw, 'court', errors, index),
       summary: requireText(raw, 'summary', errors, index),
       sourceLabel: requireText(raw, 'sourceLabel', errors, index),
-      sourceUrl: requireHttpsUrl(raw, 'sourceUrl', errors, index)
+      sourceUrl: requireHttpsUrl(raw, 'sourceUrl', errors, index),
+      lastUpdatedAt: lastUpdated.value
     };
   });
 
@@ -227,7 +301,19 @@ function normalize(payload) {
     throw new Error(`資料驗證失敗，共 ${errors.length} 項：\n- ${errors.join('\n- ')}`);
   }
 
-  return { updatedAt: clean(payload.updatedAt), records };
+  // sourceUpdatedAt 必須恰好等於所有列時間戳的最大值，
+  // 否則代表端點的彙總邏輯與列資料脫節，寧可拒收也不寫出誤導的查核時間。
+  if (maxRowStamp === null) {
+    throw new Error('沒有任何列提供有效的 lastUpdatedAt，拒絕產生快照');
+  }
+  if (sourceStamp !== maxRowStamp) {
+    throw new Error(
+      `sourceUpdatedAt（${sourceUpdatedAt}）不等於各列 lastUpdatedAt 的最大值` +
+        `（${new Date(maxRowStamp).toISOString().slice(0, 19)}Z）`
+    );
+  }
+
+  return { sourceUpdatedAt, records };
 }
 
 /* ---------- 產生快照 ---------- */
@@ -254,7 +340,7 @@ function renderRecord(record) {
   return `  {\n${lines.join(',\n')}\n  }`;
 }
 
-function renderSnapshot(updatedAt, records) {
+function renderSnapshot(sourceUpdatedAt, records) {
   return `/**
  * 憲法急診室 — 案件快照（自動產生，請勿手動編輯）
  *
@@ -262,12 +348,16 @@ function renderSnapshot(updatedAt, records) {
  * - \`status\` / \`review\` 由官方狀態文字以全形分號「；」切分而得，
  *   僅描述程序位置，不描述實體結果。
  * - \`filedAt\` 為官方所載之「受理日期」。
+ * - \`lastUpdatedAt\` 為該筆資料的人工查核時間（RFC3339 UTC）。
+ * - \`window.CASES_SOURCE_UPDATED_AT\` 為所有列查核時間的最大值。
  * - 本檔為前端唯一資料來源，瀏覽器端不發出任何網路請求。
  */
 window.CASES = Object.freeze([
 ${records.map(renderRecord).join(',\n')}
 ]);
-window.CASES_UPDATED_AT = ${literal(updatedAt)};
+window.CASES_SOURCE_UPDATED_AT = ${literal(sourceUpdatedAt)};
+// 向後相容別名，值與 CASES_SOURCE_UPDATED_AT 相同。
+window.CASES_UPDATED_AT = window.CASES_SOURCE_UPDATED_AT;
 `;
 }
 
@@ -276,10 +366,10 @@ window.CASES_UPDATED_AT = ${literal(updatedAt)};
 async function main() {
   process.stdout.write(`取得端點資料中（逾時 ${TIMEOUT_MS / 1000} 秒）…\n`);
   const payload = await fetchPayload();
-  const { updatedAt, records } = normalize(payload);
+  const { sourceUpdatedAt, records } = normalize(payload);
 
   // 驗證全數通過後才落地：先寫暫存檔，再原子性 rename 覆蓋。
-  const output = renderSnapshot(updatedAt, records);
+  const output = renderSnapshot(sourceUpdatedAt, records);
   try {
     await writeFile(TEMP_PATH, output, 'utf8');
     await rename(TEMP_PATH, OUTPUT_PATH);
@@ -289,7 +379,7 @@ async function main() {
   }
 
   process.stdout.write(
-    `已更新 data/cases.js：${records.length} 筆案件，updatedAt=${updatedAt}\n`
+    `已更新 data/cases.js：${records.length} 筆案件，sourceUpdatedAt=${sourceUpdatedAt}\n`
   );
 }
 

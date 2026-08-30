@@ -12,6 +12,8 @@
   'use strict';
 
   var CASES = Array.isArray(window.CASES) ? window.CASES : [];
+  /** 快照的資料查核時間；舊快照只有 CASES_UPDATED_AT，仍可讀。 */
+  var SOURCE_UPDATED_AT = window.CASES_SOURCE_UPDATED_AT || window.CASES_UPDATED_AT || '';
   var CRITICAL_DAYS = 1000;
   var DOT_MIN = 11;
   var DOT_MAX = 40;
@@ -178,10 +180,37 @@
     return Number(n).toLocaleString('en-US');
   }
 
+  /**
+   * 將快照的 RFC3339 UTC 查核時間格式化為台灣時區的顯示字串。
+   * 解析不出有效時間就回傳空字串，由呼叫端保留破折號，不顯示可疑數值。
+   */
+  function formatTaiwanTime(iso) {
+    if (!iso) return '';
+    var stamp = Date.parse(iso);
+    if (isNaN(stamp)) return '';
+    var date = new Date(stamp);
+    try {
+      return date.toLocaleString('zh-TW', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }) + '（台北時間）';
+    } catch (error) {
+      // 極少數環境不支援 IANA 時區；此時退回顯示原始 UTC 字串。
+      return iso;
+    }
+  }
+
   /* ---------- DOM 參照 ---------- */
 
   var dom = {
     stamp: document.getElementById('today-stamp'),
+    sourceStamp: document.getElementById('source-stamp'),
+    footerMono: document.getElementById('footer-mono'),
     total: document.getElementById('vital-total'),
     shown: document.getElementById('vital-shown'),
     avg: document.getElementById('vital-avg'),
@@ -584,6 +613,13 @@
       today.getFullYear() + '-' +
       String(today.getMonth() + 1).padStart(2, '0') + '-' +
       String(today.getDate()).padStart(2, '0');
+
+    // 資料查核時間來自快照本身，不是頁面載入時間，也不會發出任何請求。
+    var checkedAt = formatTaiwanTime(SOURCE_UPDATED_AT);
+    dom.sourceStamp.textContent = '資料最後查核：' + (checkedAt || '—');
+
+    dom.footerMono.textContent =
+      'STATIC SNAPSHOT ／ ' + fmt(CASES.length) + ' RECORDS ／ LOCAL DATA ONLY ／ NO NETWORK FETCH';
 
     renderDrawer();
 
