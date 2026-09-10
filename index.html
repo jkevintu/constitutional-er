@@ -26,6 +26,37 @@
     <div class="masthead__stamps">
       <p class="masthead__stamp" id="today-stamp">看板日期 —</p>
       <p class="masthead__stamp" id="source-stamp">資料最後查核：—</p>
+
+      <!--
+        制度層席次徽章：與其他抬頭標記同一層級，收合時只給未補齊天數。
+        預設就是 fail-closed 狀態——快照通過驗證後，app.js 才會亮出按鈕並隱藏待查證標記。
+      -->
+      <div class="seatwidget" id="seat-widget">
+        <p class="masthead__stamp" id="seat-fallback">席次資料待查證</p>
+
+        <button type="button" class="masthead__stamp seatwidget__toggle" id="seat-toggle"
+                aria-expanded="false" aria-controls="seat-panel" hidden>
+          <span class="seatwidget__label" id="seat-label"></span>
+          <svg class="seatwidget__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M8 0.8a7.2 7.2 0 1 0 0 14.4A7.2 7.2 0 0 0 8 0.8zm0 1.5a5.7 5.7 0 1 1 0 11.4 5.7 5.7 0 0 1 0-11.4z"></path>
+            <rect x="7.25" y="6.7" width="1.5" height="5.1"></rect>
+            <rect x="7.25" y="4" width="1.5" height="1.8"></rect>
+          </svg>
+        </button>
+
+        <div class="seatpanel" id="seat-panel" role="group" aria-labelledby="seat-panel-title" hidden>
+          <h2 class="seatpanel__title" id="seat-panel-title">大法官席次現況</h2>
+          <p class="seatpanel__counts" id="seat-counts"></p>
+          <p class="seatpanel__range" id="seat-range"></p>
+
+          <p class="seatpanel__note">
+            本項天數記錄的是<strong>席次未補齊</strong>這一個制度狀態持續的時間，
+            <b>不代表</b>個別大法官的工作時數、案件負荷或健康狀況。
+          </p>
+
+          <div class="seatpanel__src" id="seat-source"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -37,28 +68,6 @@
 </header>
 
 <main id="main">
-
-  <!-- 制度層狀態列：獨立於下方所有篩選條件，永遠呈現完整席次現況 -->
-  <section class="seatstrip" aria-labelledby="seat-title">
-    <div class="seatstrip__main">
-      <h2 class="seatstrip__title" id="seat-title">大法官席次現況</h2>
-      <p class="seatstrip__primary" id="seat-primary">席次資料待查證</p>
-      <p class="seatstrip__secondary" id="seat-secondary"></p>
-      <p class="seatstrip__range" id="seat-range"></p>
-    </div>
-
-    <div class="seatstrip__aside">
-      <p class="seatstrip__note">
-        本項天數記錄的是<strong>席次未補齊</strong>這一個制度狀態持續的時間，
-        <b>不代表</b>個別大法官的工作時數、案件負荷或健康狀況。
-      </p>
-
-      <details class="seatstrip__src" id="seat-details">
-        <summary class="seatstrip__summary">來源與計算方式</summary>
-        <div class="seatstrip__srcbody" id="seat-source"></div>
-      </details>
-    </div>
-  </section>
 
   <!-- 唯一的搜尋／篩選 bar：搜尋欄常駐，其餘條件收在預設關閉的抽屜內 -->
   <div class="filterbar">
@@ -183,7 +192,7 @@
 
 <footer class="footer">
   <p>資料來源：司法院憲法法庭「公開書狀之案件（已受理）」公開頁面；席次現況另引司法院憲法法庭現任大法官名單。本頁為靜態資料展示 POC，無後端、無追蹤碼、不蒐集個資。</p>
-  <p>兩份快照各自獨立更新：案件快照的查核時間見頁首標記與各案來源連結，席次快照的查證時間見「大法官席次現況」中的「來源與計算方式」。</p>
+  <p>兩份快照各自獨立更新：案件快照的查核時間見頁首標記與各案來源連結，席次快照的查證時間見頁首席次標記展開後的「大法官席次現況」。</p>
   <p class="footer__mono" id="footer-mono">LOCAL DATA ONLY ／ NO NETWORK FETCH</p>
 </footer>
 

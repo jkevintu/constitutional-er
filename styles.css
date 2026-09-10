@@ -178,21 +178,71 @@ body {
 .disclaimer b { color: var(--urgent-deep); }
 .disclaimer em { font-style: normal; text-decoration: underline dotted; }
 
-/* ---------- 制度層席次狀態列 ---------- */
+/* ---------- 制度層席次徽章（抬頭右側，收合時只給天數） ---------- */
 
-.seatstrip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 42ch);
-  gap: 12px var(--gut);
-  align-items: start;
-  padding: 16px var(--pad);
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-  background: var(--paper-deep);
+/* 面板以徽章為定位錨點；z-index 需高於下方 sticky 的篩選 bar。 */
+.seatwidget {
+  position: relative;
+  z-index: 30;
 }
 
-.seatstrip__title {
-  margin: 0 0 6px;
+.seatwidget__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+}
+/* display 是作者樣式，會蓋過 [hidden] 的 UA 規則，必須明示收起來。 */
+.seatwidget__toggle[hidden] { display: none; }
+
+.seatwidget__toggle:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+.seatwidget__toggle[aria-expanded="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* 天數比其他標記略重，但仍留在標記的字級層級內。 */
+.seatwidget__num {
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--urgent);
+}
+
+.seatwidget__icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  fill: var(--ink-faint);
+}
+.seatwidget__toggle:hover .seatwidget__icon,
+.seatwidget__toggle[aria-expanded="true"] .seatwidget__icon { fill: var(--ink); }
+
+/* 窄螢幕以 100vw 扣掉兩側頁面留白為上限，面板不會被推出視窗。 */
+.seatpanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(380px, calc(100vw - 2 * var(--pad)));
+  max-width: 92vw;
+  padding: 14px 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 10px 28px rgba(23, 26, 25, 0.16);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  text-align: left;
+}
+
+.seatpanel__title {
+  margin: 0 0 8px;
   font-family: var(--sans);
   font-size: 11.5px;
   font-weight: 500;
@@ -200,68 +250,33 @@ body {
   color: var(--ink-faint);
 }
 
-.seatstrip__primary {
+.seatpanel__counts {
   margin: 0;
-  font-family: var(--serif);
-  font-weight: 700;
-  font-size: clamp(22px, 3.4vw, 34px);
-  line-height: 1.15;
-  color: var(--ink);
-}
-.seatstrip__primary .seatstrip__num {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--urgent);
-}
-
-.seatstrip__secondary {
-  margin: 8px 0 0;
   font-family: var(--mono);
   font-size: 13px;
   letter-spacing: 0.04em;
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 
-.seatstrip__range {
+.seatpanel__range {
   margin: 4px 0 0;
-  font-size: 12.5px;
   color: var(--ink-faint);
 }
 
-.seatstrip__note {
-  margin: 0 0 8px;
+.seatpanel__note {
+  margin: 10px 0;
   padding-left: 12px;
   border-left: 3px solid var(--rule-strong);
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--ink-soft);
 }
-.seatstrip__note strong { color: var(--ink); }
-.seatstrip__note b { color: var(--urgent-deep); }
+.seatpanel__note strong { color: var(--ink); }
+.seatpanel__note b { color: var(--urgent-deep); }
 
-.seatstrip__summary {
-  cursor: pointer;
-  font-size: 12.5px;
-  color: var(--ink-soft);
-}
-.seatstrip__summary:hover { color: var(--ink); }
-
-.seatstrip__srcbody {
-  margin-top: 8px;
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--ink-soft);
-}
-.seatstrip__srcbody p { margin: 0 0 6px; }
-.seatstrip__links {
+.seatpanel__src p { margin: 0 0 6px; }
+.seatpanel__links {
   margin: 0 0 6px;
   padding-left: 18px;
 }
-.seatstrip__links a { color: var(--ink); overflow-wrap: anywhere; }
-
-@media (max-width: 900px) {
-  .seatstrip { grid-template-columns: minmax(0, 1fr); }
-}
+.seatpanel__links a { color: var(--ink); overflow-wrap: anywhere; }
 
 /* ---------- 單一搜尋／篩選 bar ---------- */
 

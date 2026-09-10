@@ -302,10 +302,13 @@
     list: document.getElementById('case-list'),
     listCount: document.getElementById('list-count'),
     detail: document.getElementById('case-detail'),
-    seatPrimary: document.getElementById('seat-primary'),
-    seatSecondary: document.getElementById('seat-secondary'),
+    seatWidget: document.getElementById('seat-widget'),
+    seatFallback: document.getElementById('seat-fallback'),
+    seatToggle: document.getElementById('seat-toggle'),
+    seatLabel: document.getElementById('seat-label'),
+    seatPanel: document.getElementById('seat-panel'),
+    seatCounts: document.getElementById('seat-counts'),
     seatRange: document.getElementById('seat-range'),
-    seatDetails: document.getElementById('seat-details'),
     seatSource: document.getElementById('seat-source')
   };
 
@@ -366,6 +369,23 @@
     ui.selectedId = null;
     ui.hoverId = null;
     renderApp();
+  }
+
+  /* ---------- 席次徽章的展開面板 ---------- */
+
+  function isSeatPanelOpen() {
+    return dom.seatToggle.getAttribute('aria-expanded') === 'true';
+  }
+
+  function setSeatPanel(open) {
+    dom.seatPanel.hidden = !open;
+    dom.seatToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  function closeSeatPanel(restoreFocus) {
+    if (!isSeatPanelOpen()) return;
+    setSeatPanel(false);
+    if (restoreFocus) dom.seatToggle.focus();
   }
 
   /* ---------- 渲染 ---------- */
@@ -646,7 +666,7 @@
   }
 
   /**
-   * 席次狀態列：只讀 window.INSTITUTION，只寫這一區塊與頁尾的資料鮮度標記。
+   * 席次徽章：只讀 window.INSTITUTION，只寫抬頭右側這一顆徽章、它的面板與頁尾的資料鮮度標記。
    * 只在啟動時渲染一次，任何篩選條件都不會改動它。
    */
   function renderInstitution() {
@@ -655,24 +675,29 @@
     var tail = ' ／ LOCAL DATA ONLY ／ NO NETWORK FETCH';
 
     if (!snap) {
-      // Fail closed：寧可說資料待查證，也不輸出任何沒被驗證過的數字。
-      dom.seatPrimary.textContent = '席次資料待查證';
-      dom.seatSecondary.textContent = '';
-      clear(dom.seatRange);
-      clear(dom.seatSource);
-      dom.seatDetails.hidden = true;
+      // Fail closed：維持 HTML 預設的「席次資料待查證」標記，
+      // 徽章與面板都不亮出來，也就不會有任何沒被驗證過的數字外流。
       dom.footerMono.textContent = caseStamp + ' ／ SEAT SNAPSHOT UNVERIFIED' + tail;
       return;
     }
 
-    clear(dom.seatPrimary);
-    dom.seatPrimary.appendChild(document.createTextNode(snap.ongoing ? '未補齊持續 ' : '未補齊共計 '));
-    var duration = el('time', 'seatstrip__num', fmt(snap.days));
-    duration.setAttribute('datetime', 'P' + snap.days + 'D');
-    dom.seatPrimary.appendChild(duration);
-    dom.seatPrimary.appendChild(document.createTextNode(' 天'));
+    var lead = snap.ongoing ? '未補齊 ' : '未補齊共計 ';
 
-    dom.seatSecondary.textContent = '在任 ' + fmt(snap.sitting) + ' 人／法定 ' + fmt(snap.seats) +
+    clear(dom.seatLabel);
+    dom.seatLabel.appendChild(document.createTextNode(lead));
+    var duration = el('time', 'seatwidget__num', fmt(snap.days));
+    duration.setAttribute('datetime', 'P' + snap.days + 'D');
+    dom.seatLabel.appendChild(duration);
+    dom.seatLabel.appendChild(document.createTextNode(' 天'));
+
+    // 無障礙名稱包含徽章上看得到的文字，再補上這顆按鈕會展開什麼。
+    dom.seatToggle.setAttribute('aria-label',
+      '大法官席次現況：' + lead + fmt(snap.days) + ' 天，展開席次明細與資料來源');
+
+    dom.seatFallback.hidden = true;
+    dom.seatToggle.hidden = false;
+
+    dom.seatCounts.textContent = '在任 ' + fmt(snap.sitting) + ' 人／法定 ' + fmt(snap.seats) +
       ' 人・缺額 ' + fmt(snap.vacancies) + ' 席';
 
     clear(dom.seatRange);
@@ -682,13 +707,12 @@
     dom.seatRange.appendChild(dateTimeEl(snap.endIso));
 
     clear(dom.seatSource);
-    dom.seatDetails.hidden = false;
     dom.seatSource.appendChild(el('p', null,
       '計算方式：天數＝計算終點 ' + slashDate(snap.endIso) + ' 與起算日 ' + slashDate(snap.startIso) +
       ' 之間的日曆日數（以 UTC 日界計），由快照日期推導、不隨開啟畫面的時間改變；' +
       '缺額＝法定席次 ' + fmt(snap.seats) + ' 減在任人數 ' + fmt(snap.sitting) + '。'));
 
-    var links = el('ul', 'seatstrip__links');
+    var links = el('ul', 'seatpanel__links');
     snap.sources.forEach(function (src) {
       var href = safeHttpsUrl(src && src.url);
       if (!href) return;
@@ -773,6 +797,21 @@
     // 制度層狀態獨立於篩選，只在啟動時渲染一次；頁尾 mono 標記由 renderInstitution()
     // 統一寫入（同時涵蓋案件筆數與席次快照日期），此處不再重複賦值。
     renderInstitution();
+
+    dom.seatToggle.addEventListener('click', function () {
+      setSeatPanel(!isSeatPanelOpen());
+    });
+
+    // 點面板外、按 Esc 都關閉；徽章本身的點擊由上面的 toggle 處理，這裡放行。
+    document.addEventListener('click', function (event) {
+      if (!isSeatPanelOpen()) return;
+      if (dom.seatWidget.contains(event.target)) return;
+      closeSeatPanel(false);
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') closeSeatPanel(true);
+    });
 
     renderDrawer();
 
