@@ -38,6 +38,28 @@
 
 <main id="main">
 
+  <!-- 制度層狀態列：獨立於下方所有篩選條件，永遠呈現完整席次現況 -->
+  <section class="seatstrip" aria-labelledby="seat-title">
+    <div class="seatstrip__main">
+      <h2 class="seatstrip__title" id="seat-title">大法官席次現況</h2>
+      <p class="seatstrip__primary" id="seat-primary">席次資料待查證</p>
+      <p class="seatstrip__secondary" id="seat-secondary"></p>
+      <p class="seatstrip__range" id="seat-range"></p>
+    </div>
+
+    <div class="seatstrip__aside">
+      <p class="seatstrip__note">
+        本項天數記錄的是<strong>席次未補齊</strong>這一個制度狀態持續的時間，
+        <b>不代表</b>個別大法官的工作時數、案件負荷或健康狀況。
+      </p>
+
+      <details class="seatstrip__src" id="seat-details">
+        <summary class="seatstrip__summary">來源與計算方式</summary>
+        <div class="seatstrip__srcbody" id="seat-source"></div>
+      </details>
+    </div>
+  </section>
+
   <!-- 唯一的搜尋／篩選 bar：搜尋欄常駐，其餘條件收在預設關閉的抽屜內 -->
   <div class="filterbar">
     <div class="filterbar__row">
@@ -160,11 +182,13 @@
 </main>
 
 <footer class="footer">
-  <p>資料來源：司法院憲法法庭「公開書狀之案件（已受理）」公開頁面。本頁為靜態資料展示 POC，無後端、無追蹤碼、不蒐集個資。</p>
-  <p class="footer__mono" id="footer-mono">STATIC SNAPSHOT ／ LOCAL DATA ONLY ／ NO NETWORK FETCH</p>
+  <p>資料來源：司法院憲法法庭「公開書狀之案件（已受理）」公開頁面；席次現況另引司法院憲法法庭現任大法官名單。本頁為靜態資料展示 POC，無後端、無追蹤碼、不蒐集個資。</p>
+  <p>兩份快照各自獨立更新：案件快照的查核時間見頁首標記與各案來源連結，席次快照的查證時間見「大法官席次現況」中的「來源與計算方式」。</p>
+  <p class="footer__mono" id="footer-mono">LOCAL DATA ONLY ／ NO NETWORK FETCH</p>
 </footer>
 
 <script src="data/cases.js"></script>
+<script src="data/institution.js"></script>
 <script src="app.js" defer></script>
 </body>
 </html>

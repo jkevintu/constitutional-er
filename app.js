@@ -66,6 +66,77 @@
     return Math.max(0, Math.round((nowUtc - filed) / 86400000));
   }
 
+  /** 嚴格解析 YYYY-MM-DD 為 UTC 日界毫秒；格式或日期不存在時回傳 NaN。 */
+  function utcDayOf(iso) {
+    if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return NaN;
+    var y = Number(iso.slice(0, 4));
+    var m = Number(iso.slice(5, 7));
+    var d = Number(iso.slice(8, 10));
+    var ms = Date.UTC(y, m - 1, d);
+    var back = new Date(ms);
+    // 反向比對可擋掉 2026-02-31 這種「格式合法但日期不存在」的值。
+    if (back.getUTCFullYear() !== y || back.getUTCMonth() !== m - 1 || back.getUTCDate() !== d) return NaN;
+    return ms;
+  }
+
+  function isCount(n) {
+    return typeof n === 'number' && isFinite(n) && n >= 0 && Math.floor(n) === n;
+  }
+
+  function slashDate(iso) {
+    return String(iso).replace(/-/g, '/');
+  }
+
+  /**
+   * 由制度快照推導席次現況。
+   * 天數只由 shortageStartedOn 與快照日推導，與瀏覽器當下時間無關；
+   * 任何一項不合法就回傳 null，由呼叫端顯示「席次資料待查證」而不是猜一個數字。
+   */
+  function institutionSnapshot(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+
+    var seats = raw.authorizedSeats;
+    var sitting = raw.sittingJustices;
+    if (!isCount(seats) || !isCount(sitting) || seats <= 0 || sitting > seats) return null;
+
+    var vacancies = seats - sitting;
+    if (vacancies <= 0) return null; // 沒有缺額就不該出現「未補齊」的敘述
+
+    var startMs = utcDayOf(raw.shortageStartedOn);
+    var asOfMs = utcDayOf(raw.asOfDate);
+    if (isNaN(startMs) || isNaN(asOfMs) || asOfMs < startMs) return null;
+
+    // shortageEndedOn 為 null／undefined＝截至快照日仍未補齊，計算終點就是快照日。
+    var ongoing = raw.shortageEndedOn === null || raw.shortageEndedOn === undefined;
+    var endIso = ongoing ? raw.asOfDate : raw.shortageEndedOn;
+    var endMs = utcDayOf(endIso);
+    if (isNaN(endMs) || endMs < startMs) return null;
+
+    var days = Math.round((endMs - startMs) / 86400000);
+    if (days <= 0) return null;
+
+    return {
+      seats: seats,
+      sitting: sitting,
+      vacancies: vacancies,
+      days: days,
+      ongoing: ongoing,
+      startIso: raw.shortageStartedOn,
+      endIso: endIso,
+      asOfIso: raw.asOfDate,
+      verifiedAt: typeof raw.verifiedAt === 'string' ? raw.verifiedAt : '',
+      sources: Array.isArray(raw.sources) ? raw.sources : []
+    };
+  }
+
+  /** 顯示用：2026-09-10T09:00:00+08:00 → 2026/09/10 09:00（UTC+8）；無法解析時回傳 null。 */
+  function verifiedLabel(stamp) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?([+-])(\d{2}):(\d{2})$/.exec(String(stamp));
+    if (!m) return null;
+    return m[1] + '/' + m[2] + '/' + m[3] + ' ' + m[4] + ':' + m[5] +
+      '（UTC' + m[6] + Number(m[7]) + (m[8] === '00' ? '' : ':' + m[8]) + '）';
+  }
+
   /** 案件的主要權益分類，決定它屬於哪個星群。 */
   function primaryRight(record) {
     return (record.rights && record.rights[0]) || '未分類';
@@ -230,7 +301,12 @@
     skyEmpty: document.getElementById('sky-empty'),
     list: document.getElementById('case-list'),
     listCount: document.getElementById('list-count'),
-    detail: document.getElementById('case-detail')
+    detail: document.getElementById('case-detail'),
+    seatPrimary: document.getElementById('seat-primary'),
+    seatSecondary: document.getElementById('seat-secondary'),
+    seatRange: document.getElementById('seat-range'),
+    seatDetails: document.getElementById('seat-details'),
+    seatSource: document.getElementById('seat-source')
   };
 
   /* ---------- 篩選抽屜 ---------- */
@@ -562,6 +638,82 @@
     dom.critical.textContent = fmt(criticalCount);
   }
 
+  /** 依 ISO 日期產生 <time datetime="YYYY-MM-DD">YYYY/MM/DD</time>。 */
+  function dateTimeEl(iso) {
+    var node = el('time', null, slashDate(iso));
+    node.setAttribute('datetime', iso);
+    return node;
+  }
+
+  /**
+   * 席次狀態列：只讀 window.INSTITUTION，只寫這一區塊與頁尾的資料鮮度標記。
+   * 只在啟動時渲染一次，任何篩選條件都不會改動它。
+   */
+  function renderInstitution() {
+    var snap = institutionSnapshot(window.INSTITUTION);
+    var caseStamp = 'CASE SNAPSHOT ' + fmt(CASES.length) + ' RECORDS';
+    var tail = ' ／ LOCAL DATA ONLY ／ NO NETWORK FETCH';
+
+    if (!snap) {
+      // Fail closed：寧可說資料待查證，也不輸出任何沒被驗證過的數字。
+      dom.seatPrimary.textContent = '席次資料待查證';
+      dom.seatSecondary.textContent = '';
+      clear(dom.seatRange);
+      clear(dom.seatSource);
+      dom.seatDetails.hidden = true;
+      dom.footerMono.textContent = caseStamp + ' ／ SEAT SNAPSHOT UNVERIFIED' + tail;
+      return;
+    }
+
+    clear(dom.seatPrimary);
+    dom.seatPrimary.appendChild(document.createTextNode(snap.ongoing ? '未補齊持續 ' : '未補齊共計 '));
+    var duration = el('time', 'seatstrip__num', fmt(snap.days));
+    duration.setAttribute('datetime', 'P' + snap.days + 'D');
+    dom.seatPrimary.appendChild(duration);
+    dom.seatPrimary.appendChild(document.createTextNode(' 天'));
+
+    dom.seatSecondary.textContent = '在任 ' + fmt(snap.sitting) + ' 人／法定 ' + fmt(snap.seats) +
+      ' 人・缺額 ' + fmt(snap.vacancies) + ' 席';
+
+    clear(dom.seatRange);
+    dom.seatRange.appendChild(document.createTextNode('自 '));
+    dom.seatRange.appendChild(dateTimeEl(snap.startIso));
+    dom.seatRange.appendChild(document.createTextNode(' 起，計至 '));
+    dom.seatRange.appendChild(dateTimeEl(snap.endIso));
+
+    clear(dom.seatSource);
+    dom.seatDetails.hidden = false;
+    dom.seatSource.appendChild(el('p', null,
+      '計算方式：天數＝計算終點 ' + slashDate(snap.endIso) + ' 與起算日 ' + slashDate(snap.startIso) +
+      ' 之間的日曆日數（以 UTC 日界計），由快照日期推導、不隨開啟畫面的時間改變；' +
+      '缺額＝法定席次 ' + fmt(snap.seats) + ' 減在任人數 ' + fmt(snap.sitting) + '。'));
+
+    var links = el('ul', 'seatstrip__links');
+    snap.sources.forEach(function (src) {
+      var href = safeHttpsUrl(src && src.url);
+      if (!href) return;
+      var item = el('li');
+      var link = el('a', null, String((src && src.label) || href));
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      item.appendChild(link);
+      links.appendChild(item);
+    });
+    if (links.childNodes.length) dom.seatSource.appendChild(links);
+
+    var verified = verifiedLabel(snap.verifiedAt);
+    if (verified) {
+      var stampLine = el('p', null, '席次資料查證時間：');
+      var stamp = el('time', null, verified);
+      stamp.setAttribute('datetime', snap.verifiedAt);
+      stampLine.appendChild(stamp);
+      dom.seatSource.appendChild(stampLine);
+    }
+
+    dom.footerMono.textContent = caseStamp + ' ／ SEAT SNAPSHOT ' + snap.asOfIso + tail;
+  }
+
   function renderApp() {
     var rows = filteredCases();
     var maxAll = CASES.reduce(function (m, r) { return Math.max(m, r.waitDays); }, 0);
@@ -618,8 +770,9 @@
     var checkedAt = formatTaiwanTime(SOURCE_UPDATED_AT);
     dom.sourceStamp.textContent = '資料最後查核：' + (checkedAt || '—');
 
-    dom.footerMono.textContent =
-      'STATIC SNAPSHOT ／ ' + fmt(CASES.length) + ' RECORDS ／ LOCAL DATA ONLY ／ NO NETWORK FETCH';
+    // 制度層狀態獨立於篩選，只在啟動時渲染一次；頁尾 mono 標記由 renderInstitution()
+    // 統一寫入（同時涵蓋案件筆數與席次快照日期），此處不再重複賦值。
+    renderInstitution();
 
     renderDrawer();
 
